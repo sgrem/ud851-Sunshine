@@ -27,6 +27,10 @@
     <!--Used in overflow menu to refresh weather data-->
     <string name="action_refresh">Refresh</string>
 
+    <!--Used in overflow menu to launch weather detail activity-->
+    <string name="action_launch_detail">Detail</string>
+
+
     <string name="error_message">
         An error has occurred. Please try again by clicking REFRESH
     </string>
@@ -131,6 +135,8 @@
     <string name="condition_962">Hurricane</string>
 
     <string name="condition_unknown">Unknown (<xliff:g id="conditionId">%1$d</xliff:g>)</string>
+    <string name="action_share">Share</string>
+    <string name="detail_chooser_title">Weather Forecast</string>
 
 
     <!-- - - - - - - - - - - -->

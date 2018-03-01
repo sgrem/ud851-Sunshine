@@ -120,6 +120,10 @@ public class MainActivity extends AppCompatActivity implements ForecastAdapterOn
      */
     @Override
     public void onClick(String weatherForDay) {
+        launchDetailActivity(weatherForDay);
+    }
+
+    private void launchDetailActivity(String weatherForDay) {
         Context context = this;
         Class destinationClass = DetailActivity.class;
         Intent intentToStartDetailActivity = new Intent(context, destinationClass);
@@ -221,7 +225,11 @@ public class MainActivity extends AppCompatActivity implements ForecastAdapterOn
             return true;
         }
 
-        // TODO (2) Launch the map when the map menu item is clicked
+        // TODO COMPLETED (2) Launch the map when the map menu item is clicked
+        if (id == R.id.action_launch_detail) {
+            launchDetailActivity("It's a beautiful day in the neighborhood...");
+            return true;
+        }
 
         return super.onOptionsItemSelected(item);
     }
