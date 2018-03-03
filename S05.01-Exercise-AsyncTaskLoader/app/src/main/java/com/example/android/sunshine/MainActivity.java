@@ -15,19 +15,28 @@
  */
 package com.example.android.sunshine;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.CursorLoader;
 import android.content.Intent;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.support.annotation.Nullable;
+import android.support.v4.app.LoaderManager;
+import android.support.v4.content.AsyncTaskLoader;
+import android.support.v4.content.Loader;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.CursorAdapter;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
@@ -36,12 +45,16 @@ import com.example.android.sunshine.data.SunshinePreferences;
 import com.example.android.sunshine.utilities.NetworkUtils;
 import com.example.android.sunshine.utilities.OpenWeatherJsonUtils;
 
+import java.io.IOException;
 import java.net.URL;
 
-// TODO (1) Implement the proper LoaderCallbacks interface and the methods of that interface
-public class MainActivity extends AppCompatActivity implements ForecastAdapterOnClickHandler {
+// COMPLETED TODO (1) Implement the proper LoaderCallbacks interface and the methods of that interface
+public class MainActivity extends AppCompatActivity implements ForecastAdapterOnClickHandler, LoaderManager.LoaderCallbacks<String[]> {
 
     private static final String TAG = MainActivity.class.getSimpleName();
+
+    private static final int WEATHER_LOADER = 1;
+    private static final String WEATHER_LOCATION_EXTRA = null;
 
     private RecyclerView mRecyclerView;
     private ForecastAdapter mForecastAdapter;
@@ -98,7 +111,12 @@ public class MainActivity extends AppCompatActivity implements ForecastAdapterOn
          */
         mLoadingIndicator = (ProgressBar) findViewById(R.id.pb_loading_indicator);
 
-        // TODO (7) Remove the code for the AsyncTask and initialize the AsyncTaskLoader
+        // COMPLETED TODO (7) Remove the code for the AsyncTask and initialize the AsyncTaskLoader
+        /*
+         * Initialize the loader
+         */
+        getSupportLoaderManager().initLoader(WEATHER_LOADER, null, this);
+
         /* Once all of our views are setup, we can load the weather data. */
         loadWeatherData();
     }
@@ -111,13 +129,34 @@ public class MainActivity extends AppCompatActivity implements ForecastAdapterOn
         showWeatherDataView();
 
         String location = SunshinePreferences.getPreferredWeatherLocation(this);
-        new FetchWeatherTask().execute(location);
+        // new FetchWeatherTask().execute(location);
+        Bundle queryBundle = new Bundle();
+        queryBundle.putString(WEATHER_LOCATION_EXTRA, location);
+
+        /*
+         * Now that we've created our bundle that we will pass to our Loader, we need to decide
+         * if we should restart the loader (if the loader already existed) or if we need to
+         * initialize the loader (if the loader did NOT already exist).
+         *
+         * We do this by first store the support loader manager in the variable loaderManager.
+         * All things related to the Loader go through through the LoaderManager. Once we have a
+         * hold on the support loader manager, (loaderManager) we can attempt to access our
+         * githubSearchLoader. To do this, we use LoaderManager's method, "getLoader", and pass in
+         * the ID we assigned in its creation. You can think of this process similar to finding a
+         * View by ID. We give the LoaderManager an ID and it returns a loader (if one exists). If
+         * one doesn't exist, we tell the LoaderManager to create one. If one does exist, we tell
+         * the LoaderManager to restart it.
+         */
+        LoaderManager loaderManager = getSupportLoaderManager();
+        Loader<String> githubSearchLoader = loaderManager.getLoader(WEATHER_LOADER);
+        if (githubSearchLoader == null) {
+            loaderManager.initLoader(WEATHER_LOADER, queryBundle, this);
+        } else {
+            loaderManager.restartLoader(WEATHER_LOADER, queryBundle, this);
+        }
     }
 
-    // TODO (2) Within onCreateLoader, return a new AsyncTaskLoader that looks a lot like the existing FetchWeatherTask.
-    // TODO (3) Cache the weather data in a member variable and deliver it in onStartLoading.
 
-    // TODO (4) When the load is finished, show either the data or an error message if there is no data
 
     /**
      * This method is overridden by our MainActivity class in order to handle RecyclerView item
@@ -162,8 +201,139 @@ public class MainActivity extends AppCompatActivity implements ForecastAdapterOn
         mErrorMessageDisplay.setVisibility(View.VISIBLE);
     }
 
-    // TODO (6) Remove any and all code from MainActivity that references FetchWeatherTask
-    public class FetchWeatherTask extends AsyncTask<String, Void, String[]> {
+    /**
+     * Instantiate and return a new Loader for the given ID.
+     *
+     * @param id   The ID whose loader is to be created.
+     * @param args Any arguments supplied by the caller.
+     * @return Return a new Loader instance that is ready to start loading.
+     */
+    @SuppressLint("StaticFieldLeak")
+    @Override
+    public Loader<String[]> onCreateLoader(int id, final Bundle args) {
+        // COMPLETED TODO (2) Within onCreateLoader, return a new AsyncTaskLoader that looks a lot like the existing FetchWeatherTask.
+        return new AsyncTaskLoader<String[]>(this) {
+            // COMPLETED TODO (3) Cache the weather data in a member variable and deliver it in onStartLoading.
+            private String[] mWeatherJson = null;
+
+            @Override
+            protected void onStartLoading() {
+
+                /* If no arguments were passed, we don't have a query to perform. Simply return. */
+                if (args == null) {
+                    return;
+                }
+
+                /*
+                 * When we initially begin loading in the background, we want to display the
+                 * loading indicator to the user
+                 */
+                mLoadingIndicator.setVisibility(View.VISIBLE);
+
+                if (mWeatherJson != null){
+                    deliverResult(mWeatherJson);
+                } else {
+                    forceLoad();
+                }
+            }
+
+            @Nullable
+            @Override
+            public String[] loadInBackground() {
+
+                /* If there's no zip code, there's nothing to look up. */
+                String location = args.getString(WEATHER_LOCATION_EXTRA);
+                if (location == null){
+                    return null;
+                }
+
+                URL weatherRequestUrl = NetworkUtils.buildUrl(location);
+
+                try {
+                    String jsonWeatherResponse = NetworkUtils
+                            .getResponseFromHttpUrl(weatherRequestUrl);
+
+                    String[] simpleJsonWeatherData = OpenWeatherJsonUtils
+                            .getSimpleWeatherStringsFromJson(MainActivity.this, jsonWeatherResponse);
+
+                    return simpleJsonWeatherData;
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return null;
+                }
+            }
+
+            @Override
+            public void deliverResult(@Nullable String data[]) {
+                mWeatherJson = data;
+                super.deliverResult(data);
+            }
+        };
+    }
+
+    /**
+     * Called when a previously created loader has finished its load.  Note
+     * that normally an application is <em>not</em> allowed to commit fragment
+     * transactions while in this call, since it can happen after an
+     * activity's state is saved.  See  for further discussion on this.
+     * <p>
+     * <p>This function is guaranteed to be called prior to the release of
+     * the last data that was supplied for this Loader.  At this point
+     * you should remove all use of the old data (since it will be released
+     * soon), but should not do your own release of the data since its Loader
+     * owns it and will take care of that.  The Loader will take care of
+     * management of its data so you don't have to.  In particular:
+     * <p>
+     * <ul>
+     * <li> <p>The Loader will monitor for changes to the data, and report
+     * them to you through new calls here.  You should not monitor the
+     * data yourself.  For example, if the data is a {@link Cursor}
+     * and you place it in a {@link CursorAdapter}, use
+     * the  constructor <em>without</em> passing
+     * in either {@link CursorAdapter#FLAG_AUTO_REQUERY}
+     * or {@link CursorAdapter#FLAG_REGISTER_CONTENT_OBSERVER}
+     * (that is, use 0 for the flags argument).  This prevents the CursorAdapter
+     * from doing its own observing of the Cursor, which is not needed since
+     * when a change happens you will get a new Cursor throw another call
+     * here.
+     * <li> The Loader will release the data once it knows the application
+     * is no longer using it.  For example, if the data is
+     * a {@link Cursor} from a {@link CursorLoader},
+     * you should not call close() on it yourself.  If the Cursor is being placed in a
+     * {@link CursorAdapter}, you should use the
+     * {@link CursorAdapter#swapCursor(Cursor)}
+     * method so that the old Cursor is not closed.
+     * </ul>
+     *
+     * @param loader The Loader that has finished.
+     */
+    // COMPLETED TODO (4) When the load is finished, show either the data or an error message if there is no data
+    @Override
+    public void onLoadFinished(Loader<String[]> loader, String[] weatherData) {
+        mLoadingIndicator.setVisibility(View.INVISIBLE);
+        if (weatherData != null) {
+            showWeatherDataView();
+            mForecastAdapter.setWeatherData(weatherData);
+        } else {
+            showErrorMessage();
+        }
+    }
+
+    /**
+     * Called when a previously created loader is being reset, and thus
+     * making its data unavailable.  The application should at this point
+     * remove any references it has to the Loader's data.
+     *
+     * @param loader The Loader that is being reset.
+     */
+    @Override
+    public void onLoaderReset(Loader<String[]> loader) {
+
+    }
+
+    // COMPLETED TODO (6) Remove any and all code from MainActivity that references FetchWeatherTask
+    /*public class FetchWeatherTask extends AsyncTask<String, Void, String[]> {
 
         @Override
         protected void onPreExecute() {
@@ -174,7 +344,7 @@ public class MainActivity extends AppCompatActivity implements ForecastAdapterOn
         @Override
         protected String[] doInBackground(String... params) {
 
-            /* If there's no zip code, there's nothing to look up. */
+            *//* If there's no zip code, there's nothing to look up. *//*
             if (params.length == 0) {
                 return null;
             }
@@ -207,7 +377,7 @@ public class MainActivity extends AppCompatActivity implements ForecastAdapterOn
                 showErrorMessage();
             }
         }
-    }
+    }*/
 
     /**
      * This method uses the URI scheme for showing a location found on a
@@ -248,7 +418,7 @@ public class MainActivity extends AppCompatActivity implements ForecastAdapterOn
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
 
-        // TODO (5) Refactor the refresh functionality to work with our AsyncTaskLoader
+        // COMPLETED TODO (5) Refactor the refresh functionality to work with our AsyncTaskLoader
         if (id == R.id.action_refresh) {
             mForecastAdapter.setWeatherData(null);
             loadWeatherData();
